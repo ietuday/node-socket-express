@@ -1,24 +1,49 @@
-var app = require('express')();
-var http = require('http').Server(app);
-var io = require('socket.io')(http);
+var app = require('http').createServer(handler)
+  , io = require('socket.io').listen(app)
+  , fs = require('fs')
 
-app.get('/', function(req, res) {
-   res.sendfile('index.html');
+app.listen(3000);
+
+var clients = {};
+
+function handler (req, res) {
+  fs.readFile(__dirname + '/index.html',
+  function (err, data) {
+    if (err) {
+      res.writeHead(500);
+      return res.end('Error loading index.html');
+    }
+
+    res.writeHead(200);
+    res.end(data);
+  });
+}
+
+io.sockets.on('connection', function (socket) {
+
+  socket.on('add-user', function(data){
+    clients[data.username] = {
+      "socket": socket.id
+    };
+  });
+
+  socket.on('private-message', function(data){
+    console.log("Sending: " + data.content + " to " + data.username);
+    if (clients[data.username]){
+      io.sockets.connected[clients[data.username].socket].emit("add-message", data);
+    } else {
+      console.log("User does not exist: " + data.username); 
+    }
+  });
+
+  //Removing the socket on disconnect
+  socket.on('disconnect', function() {
+   for(var name in clients) {
+      if(clients[name].socket === socket.id) {
+         delete clients[name];
+         break;
+      }
+   }  
+  })
+
 });
-
-io.on('connection', function(socket) {
-   console.log('A user connected');
-
-   //Send a message after a timeout of 4seconds
-   setTimeout(function() {
-      socket.send('Sent a message 4seconds after connection!');
-   }, 100);
-
-   socket.on('disconnect', function () {
-      console.log('A user disconnected');
-   });
-});
-
-http.listen(3000, function() {
-   console.log('listening on *:3000');
-});	
